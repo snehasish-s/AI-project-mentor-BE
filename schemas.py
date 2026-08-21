@@ -114,9 +114,14 @@ class AIPlanRequest(BaseModel):
         max_length=5000,
     )
 
-    prompt: str = Field(
-        min_length=5,
-    )
+
+
+class AIInteractionCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    task_type: AITaskType
+    prompt: str = Field(min_length=5, max_length=5000)
+    ai_response: str = Field(min_length=1)
+    model_name: str | None = None
 
 
 class AIInteractionResponse(BaseModel):

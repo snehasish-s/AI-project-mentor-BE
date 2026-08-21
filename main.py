@@ -12,6 +12,7 @@ from database import engine, get_db
 from models import AIInteraction, Project, Task
 from ollama_service import OllamaServiceError, generate_ai_response
 from schemas import (
+    AIInteractionCreate,
     AIInteractionResponse,
     AIPlanRequest,
     ProjectCreate,
@@ -763,6 +764,101 @@ def delete_task(
 # ---------------------------------------------------------
 # AI Mentor endpoints
 # ---------------------------------------------------------
+
+@app.get(
+    "/api/ai/history",
+    response_model=list[AIInteractionResponse],
+    tags=["AI Mentor"],
+)
+def get_all_ai_history(
+    db: Session = Depends(get_db),
+):
+    try:
+        history_statement = (
+            select(AIInteraction)
+            .order_by(AIInteraction.created_at.desc())
+        )
+        return db.scalars(history_statement).all()
+
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI history could not be retrieved.",
+        ) from error
+
+
+@app.post(
+    "/api/ai/history",
+    response_model=AIInteractionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["AI Mentor"],
+)
+def create_ai_history(
+    interaction_data: AIInteractionCreate,
+    db: Session = Depends(get_db),
+):
+    if db.get(Project, interaction_data.project_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Project with ID {interaction_data.project_id} "
+                "was not found."
+            ),
+        )
+
+    interaction = AIInteraction(
+        project_id=interaction_data.project_id,
+        task_type=interaction_data.task_type,
+        prompt=interaction_data.prompt,
+        ai_response=interaction_data.ai_response,
+        model_name=interaction_data.model_name,
+    )
+
+    try:
+        db.add(interaction)
+        db.commit()
+        db.refresh(interaction)
+        return interaction
+
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI interaction could not be saved.",
+        ) from error
+
+
+@app.delete(
+    "/api/ai/history/{interaction_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["AI Mentor"],
+)
+def delete_ai_history(
+    interaction_id: int,
+    db: Session = Depends(get_db),
+):
+    interaction = db.get(AIInteraction, interaction_id)
+
+    if interaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"AI interaction with ID {interaction_id} "
+                "was not found."
+            ),
+        )
+
+    try:
+        db.delete(interaction)
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI interaction could not be deleted.",
+        ) from error
 
 @app.post(
     "/api/ai/plan",
