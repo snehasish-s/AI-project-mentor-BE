@@ -4,13 +4,16 @@ from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import case, func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from database import engine, get_db
 from models import AIInteraction, Project, Task
-from ollama_service import OllamaServiceError, generate_ai_response
+from ollama_service import (
+    OllamaServiceError,
+    generate_ai_response,
+)
 from schemas import (
     AIInteractionCreate,
     AIInteractionResponse,
@@ -25,16 +28,16 @@ from schemas import (
 )
 
 
-# ---------------------------------------------------------
-# Environment configuration
-# ---------------------------------------------------------
+# =========================================================
+# Environment Configuration
+# =========================================================
 
 load_dotenv()
 
 
-# ---------------------------------------------------------
-# FastAPI application
-# ---------------------------------------------------------
+# =========================================================
+# FastAPI Application
+# =========================================================
 
 app = FastAPI(
     title="AI Project Mentor API",
@@ -46,13 +49,16 @@ app = FastAPI(
 )
 
 
-# ---------------------------------------------------------
-# CORS configuration
-# ---------------------------------------------------------
+# =========================================================
+# CORS Configuration
+# =========================================================
 
 frontend_origins = os.getenv(
     "FRONTEND_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "http://localhost:8080,"
+    "http://127.0.0.1:8080",
 )
 
 allowed_origins = [
@@ -60,7 +66,6 @@ allowed_origins = [
     for origin in frontend_origins.split(",")
     if origin.strip()
 ]
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,9 +76,9 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------
-# General endpoints
-# ---------------------------------------------------------
+# =========================================================
+# General Endpoints
+# =========================================================
 
 @app.get(
     "/",
@@ -116,195 +121,9 @@ def health_check():
         ) from error
 
 
-# ---------------------------------------------------------
-# Dashboard endpoint
-# ---------------------------------------------------------
-
-# @app.get(
-#     "/api/dashboard",
-#     response_model=DashboardResponse,
-#     tags=["Dashboard"],
-# )
-# def get_dashboard(
-#     db: Session = Depends(get_db),
-# ):
-#     try:
-#         total_projects = db.scalar(
-#             select(
-#                 func.count(Project.project_id)
-#             )
-#         ) or 0
-
-#         total_tasks = db.scalar(
-#             select(
-#                 func.count(Task.task_id)
-#             )
-#         ) or 0
-
-#         pending_tasks = db.scalar(
-#             select(
-#                 func.count(Task.task_id)
-#             ).where(
-#                 Task.status == "Pending"
-#             )
-#         ) or 0
-
-#         in_progress_tasks = db.scalar(
-#             select(
-#                 func.count(Task.task_id)
-#             ).where(
-#                 Task.status == "In Progress"
-#             )
-#         ) or 0
-
-#         completed_tasks = db.scalar(
-#             select(
-#                 func.count(Task.task_id)
-#             ).where(
-#                 Task.status == "Completed"
-#             )
-#         ) or 0
-
-#         progress_statement = (
-#             select(
-#                 Project.project_id,
-#                 Project.project_name,
-#                 Project.technology_stack,
-#                 func.count(
-#                     Task.task_id
-#                 ).label("total_tasks"),
-#                 func.sum(
-#                     case(
-#                         (
-#                             Task.status == "Completed",
-#                             1,
-#                         ),
-#                         else_=0,
-#                     )
-#                 ).label("completed_tasks"),
-#             )
-#             .outerjoin(
-#                 Task,
-#                 Project.project_id == Task.project_id,
-#             )
-#             .group_by(
-#                 Project.project_id,
-#                 Project.project_name,
-#                 Project.technology_stack,
-#             )
-#             .order_by(
-#                 Project.project_id
-#             )
-#         )
-
-#         progress_rows = db.execute(
-#             progress_statement
-#         ).all()
-
-#         project_progress = []
-
-#         for row in progress_rows:
-#             project_total = row.total_tasks or 0
-#             project_completed = row.completed_tasks or 0
-
-#             if project_total == 0:
-#                 progress_percentage = 0.0
-
-#             else:
-#                 progress_percentage = round(
-#                     (
-#                         project_completed
-#                         / project_total
-#                     )
-#                     * 100,
-#                     2,
-#                 )
-
-#             project_progress.append(
-#                 {
-#                     "project_id": row.project_id,
-#                     "project_name": row.project_name,
-#                     "technology_stack": (
-#                         row.technology_stack
-#                     ),
-#                     "total_tasks": project_total,
-#                     "completed_tasks": project_completed,
-#                     "progress_percentage": (
-#                         progress_percentage
-#                     ),
-#                 }
-#             )
-
-#         recent_tasks_statement = (
-#             select(
-#                 Task.task_id,
-#                 Task.title,
-#                 Task.project_id,
-#                 Project.project_name,
-#                 Task.priority,
-#                 Task.status,
-#                 Task.updated_at,
-#                 Task.created_at,
-#             )
-#             .join(
-#                 Project,
-#                 Task.project_id == Project.project_id,
-#             )
-#             .order_by(
-#                 func.coalesce(
-#                     Task.updated_at,
-#                     Task.created_at,
-#                 ).desc()
-#             )
-#             .limit(5)
-#         )
-
-#         recent_task_rows = db.execute(
-#             recent_tasks_statement
-#         ).all()
-
-#         recent_tasks = []
-
-#         for row in recent_task_rows:
-#             recent_tasks.append(
-#                 {
-#                     "task_id": row.task_id,
-#                     "title": row.title,
-#                     "project_id": row.project_id,
-#                     "project_name": row.project_name,
-#                     "priority": row.priority,
-#                     "status": row.status,
-#                     "updated_at": (
-#                         row.updated_at
-#                         or row.created_at
-#                     ),
-#                 }
-#             )
-
-#         return {
-#             "total_projects": total_projects,
-#             "total_tasks": total_tasks,
-#             "pending_tasks": pending_tasks,
-#             "in_progress_tasks": in_progress_tasks,
-#             "completed_tasks": completed_tasks,
-#             "project_progress": project_progress,
-#             "recent_tasks": recent_tasks,
-#         }
-
-#     except SQLAlchemyError as error:
-#         raise HTTPException(
-#             status_code=(
-#                 status.HTTP_500_INTERNAL_SERVER_ERROR
-#             ),
-#             detail=(
-#                 "Dashboard data could not be retrieved."
-#             ),
-#         ) from error
-
-
-# ---------------------------------------------------------
-# Project endpoints
-# ---------------------------------------------------------
+# =========================================================
+# Project Endpoints
+# =========================================================
 
 @app.post(
     "/api/projects",
@@ -319,9 +138,7 @@ def create_project(
     new_project = Project(
         project_name=project_data.project_name,
         description=project_data.description,
-        technology_stack=(
-            project_data.technology_stack
-        ),
+        technology_stack=project_data.technology_stack,
     )
 
     try:
@@ -335,9 +152,7 @@ def create_project(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Project could not be created.",
         ) from error
 
@@ -351,23 +166,16 @@ def get_projects(
     db: Session = Depends(get_db),
 ):
     try:
-        statement = select(
-            Project
-        ).order_by(
-            Project.project_id
+        statement = (
+            select(Project)
+            .order_by(Project.project_id)
         )
 
-        projects = db.scalars(
-            statement
-        ).all()
-
-        return projects
+        return db.scalars(statement).all()
 
     except SQLAlchemyError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Projects could not be retrieved.",
         ) from error
 
@@ -381,10 +189,14 @@ def get_project(
     project_id: int,
     db: Session = Depends(get_db),
 ):
-    project = db.get(
-        Project,
-        project_id,
-    )
+    try:
+        project = db.get(Project, project_id)
+
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Project could not be retrieved.",
+        ) from error
 
     if project is None:
         raise HTTPException(
@@ -408,10 +220,7 @@ def update_project(
     project_data: ProjectUpdate,
     db: Session = Depends(get_db),
 ):
-    project = db.get(
-        Project,
-        project_id,
-    )
+    project = db.get(Project, project_id)
 
     if project is None:
         raise HTTPException(
@@ -422,17 +231,9 @@ def update_project(
             ),
         )
 
-    project.project_name = (
-        project_data.project_name
-    )
-
-    project.description = (
-        project_data.description
-    )
-
-    project.technology_stack = (
-        project_data.technology_stack
-    )
+    project.project_name = project_data.project_name
+    project.description = project_data.description
+    project.technology_stack = project_data.technology_stack
 
     try:
         db.commit()
@@ -444,9 +245,7 @@ def update_project(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Project could not be updated.",
         ) from error
 
@@ -460,10 +259,7 @@ def delete_project(
     project_id: int,
     db: Session = Depends(get_db),
 ):
-    project = db.get(
-        Project,
-        project_id,
-    )
+    project = db.get(Project, project_id)
 
     if project is None:
         raise HTTPException(
@@ -479,25 +275,21 @@ def delete_project(
         db.commit()
 
         return Response(
-            status_code=(
-                status.HTTP_204_NO_CONTENT
-            )
+            status_code=status.HTTP_204_NO_CONTENT
         )
 
     except SQLAlchemyError as error:
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Project could not be deleted.",
         ) from error
 
 
-# ---------------------------------------------------------
-# Task endpoints
-# ---------------------------------------------------------
+# =========================================================
+# Task Endpoints
+# =========================================================
 
 @app.post(
     "/api/tasks",
@@ -518,8 +310,7 @@ def create_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                f"Project with ID "
-                f"{task_data.project_id} "
+                f"Project with ID {task_data.project_id} "
                 "was not found."
             ),
         )
@@ -544,9 +335,7 @@ def create_task(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Task could not be created.",
         ) from error
 
@@ -560,23 +349,16 @@ def get_tasks(
     db: Session = Depends(get_db),
 ):
     try:
-        statement = select(
-            Task
-        ).order_by(
-            Task.task_id
+        statement = (
+            select(Task)
+            .order_by(Task.task_id)
         )
 
-        tasks = db.scalars(
-            statement
-        ).all()
-
-        return tasks
+        return db.scalars(statement).all()
 
     except SQLAlchemyError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Tasks could not be retrieved.",
         ) from error
 
@@ -590,10 +372,7 @@ def get_task(
     task_id: int,
     db: Session = Depends(get_db),
 ):
-    task = db.get(
-        Task,
-        task_id,
-    )
+    task = db.get(Task, task_id)
 
     if task is None:
         raise HTTPException(
@@ -617,10 +396,7 @@ def update_task(
     task_data: TaskUpdate,
     db: Session = Depends(get_db),
 ):
-    task = db.get(
-        Task,
-        task_id,
-    )
+    task = db.get(Task, task_id)
 
     if task is None:
         raise HTTPException(
@@ -640,8 +416,7 @@ def update_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                f"Project with ID "
-                f"{task_data.project_id} "
+                f"Project with ID {task_data.project_id} "
                 "was not found."
             ),
         )
@@ -664,9 +439,7 @@ def update_task(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Task could not be updated.",
         ) from error
 
@@ -681,10 +454,7 @@ def update_task_status(
     status_data: TaskStatusUpdate,
     db: Session = Depends(get_db),
 ):
-    task = db.get(
-        Task,
-        task_id,
-    )
+    task = db.get(Task, task_id)
 
     if task is None:
         raise HTTPException(
@@ -708,12 +478,8 @@ def update_task_status(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "Task status could not be updated."
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Task status could not be updated.",
         ) from error
 
 
@@ -726,10 +492,7 @@ def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
 ):
-    task = db.get(
-        Task,
-        task_id,
-    )
+    task = db.get(Task, task_id)
 
     if task is None:
         raise HTTPException(
@@ -745,25 +508,21 @@ def delete_task(
         db.commit()
 
         return Response(
-            status_code=(
-                status.HTTP_204_NO_CONTENT
-            )
+            status_code=status.HTTP_204_NO_CONTENT
         )
 
     except SQLAlchemyError as error:
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Task could not be deleted.",
         ) from error
 
 
-# ---------------------------------------------------------
-# AI Mentor endpoints
-# ---------------------------------------------------------
+# =========================================================
+# AI Mentor Endpoints
+# =========================================================
 
 @app.get(
     "/api/ai/history",
@@ -776,9 +535,14 @@ def get_all_ai_history(
     try:
         history_statement = (
             select(AIInteraction)
-            .order_by(AIInteraction.created_at.desc())
+            .order_by(
+                AIInteraction.created_at.desc()
+            )
         )
-        return db.scalars(history_statement).all()
+
+        return db.scalars(
+            history_statement
+        ).all()
 
     except SQLAlchemyError as error:
         raise HTTPException(
@@ -797,11 +561,17 @@ def create_ai_history(
     interaction_data: AIInteractionCreate,
     db: Session = Depends(get_db),
 ):
-    if db.get(Project, interaction_data.project_id) is None:
+    project = db.get(
+        Project,
+        interaction_data.project_id,
+    )
+
+    if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                f"Project with ID {interaction_data.project_id} "
+                f"Project with ID "
+                f"{interaction_data.project_id} "
                 "was not found."
             ),
         )
@@ -818,10 +588,12 @@ def create_ai_history(
         db.add(interaction)
         db.commit()
         db.refresh(interaction)
+
         return interaction
 
     except SQLAlchemyError as error:
         db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI interaction could not be saved.",
@@ -837,13 +609,17 @@ def delete_ai_history(
     interaction_id: int,
     db: Session = Depends(get_db),
 ):
-    interaction = db.get(AIInteraction, interaction_id)
+    interaction = db.get(
+        AIInteraction,
+        interaction_id,
+    )
 
     if interaction is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                f"AI interaction with ID {interaction_id} "
+                f"AI interaction with ID "
+                f"{interaction_id} "
                 "was not found."
             ),
         )
@@ -851,14 +627,19 @@ def delete_ai_history(
     try:
         db.delete(interaction)
         db.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        return Response(
+            status_code=status.HTTP_204_NO_CONTENT
+        )
 
     except SQLAlchemyError as error:
         db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI interaction could not be deleted.",
         ) from error
+
 
 @app.post(
     "/api/ai/plan",
@@ -888,12 +669,9 @@ def generate_project_plan(
     task_statement = (
         select(Task)
         .where(
-            Task.project_id
-            == request_data.project_id
+            Task.project_id == request_data.project_id
         )
-        .order_by(
-            Task.task_id
-        )
+        .order_by(Task.task_id)
     )
 
     existing_tasks = db.scalars(
@@ -903,12 +681,8 @@ def generate_project_plan(
     try:
         ai_result = generate_ai_response(
             project_name=project.project_name,
-            project_description=(
-                project.description
-            ),
-            technology_stack=(
-                project.technology_stack
-            ),
+            project_description=project.description,
+            technology_stack=project.technology_stack,
             existing_tasks=existing_tasks,
             task_type=request_data.task_type,
             user_prompt=request_data.prompt,
@@ -939,9 +713,7 @@ def generate_project_plan(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "The AI response was generated, "
                 "but it could not be saved."
@@ -976,8 +748,7 @@ def get_ai_history(
         history_statement = (
             select(AIInteraction)
             .where(
-                AIInteraction.project_id
-                == project_id
+                AIInteraction.project_id == project_id
             )
             .order_by(
                 AIInteraction.created_at.desc()
@@ -992,10 +763,6 @@ def get_ai_history(
 
     except SQLAlchemyError as error:
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "AI history could not be retrieved."
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI history could not be retrieved.",
         ) from error
